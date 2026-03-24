@@ -124,7 +124,11 @@ app.use((req, res, next) => {
 // ========================
 // DATABASE
 // ========================
-const dbPath = path.join(__dirname, 'database.sqlite');
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'database.sqlite');
+const dbDir = path.dirname(dbPath);
+if (!require('fs').existsSync(dbDir)) {
+  require('fs').mkdirSync(dbDir, { recursive: true });
+}
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
