@@ -124,7 +124,11 @@ app.use((req, res, next) => {
 // ========================
 // DATABASE
 // ========================
-const dbPath = path.join(__dirname, 'database.sqlite');
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'database.sqlite');
+const dbDir = path.dirname(dbPath);
+if (!require('fs').existsSync(dbDir)) {
+  require('fs').mkdirSync(dbDir, { recursive: true });
+}
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
@@ -172,11 +176,17 @@ app.get('/api/health', (req, res) => {
 });
 
 // ========================
-// PROTECTED ROUTES (API key required)
+// API ROUTER V1
 // ========================
+const v1Router = express.Router();
 
-// POST /api/personas
-app.post('/api/personas', requireApiKey, (req, res) => {
+// Public health check on v1 too
+v1Router.get('/health', (req, res) => {
+    res.json({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0', api: 'v1' });
+});
+
+// POST /personas
+v1Router.post('/personas', requireApiKey, (req, res) => {
     try {
         const p = sanitizePersona(req.body);
 
@@ -188,7 +198,7 @@ app.post('/api/personas', requireApiKey, (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
         const result = stmt.run(p.nombre, p.cedula, p.edad, p.telefono, p.telefono_opcional, p.email, p.direccion, p.punto_referencia, p.sector_barrio, p.fecha_nacimiento, p.genero);
 
-        console.log(`📝 Persona registrada: ${p.nombre} (ID: ${result.lastInsertRowid})`);
+        console.log(`📝 Persona registrada: ${p.nombre} (ID: ${result.lastInsertRowid}) [v1]`);
         res.status(201).json({ success: true, message: 'Persona registrada', data: { id: result.lastInsertRowid } });
     } catch (error) {
         console.error('❌ Error:', error.message);
@@ -196,8 +206,8 @@ app.post('/api/personas', requireApiKey, (req, res) => {
     }
 });
 
-// POST /api/personas/batch
-app.post('/api/personas/batch', requireApiKey, (req, res) => {
+// POST /personas/batch
+v1Router.post('/personas/batch', requireApiKey, (req, res) => {
     try {
         const { personas } = req.body;
         if (!Array.isArray(personas) || personas.length === 0) {
@@ -222,7 +232,7 @@ app.post('/api/personas/batch', requireApiKey, (req, res) => {
         });
 
         const ids = insertMany(personas);
-        console.log(`📝 Batch: ${ids.length} personas registradas`);
+        console.log(`📝 Batch: ${ids.length} personas registradas [v1]`);
         res.status(201).json({ success: true, message: `${ids.length} personas registradas`, data: { ids, count: ids.length } });
     } catch (error) {
         console.error('❌ Error en batch:', error.message);
@@ -230,8 +240,8 @@ app.post('/api/personas/batch', requireApiKey, (req, res) => {
     }
 });
 
-// GET /api/personas
-app.get('/api/personas', requireApiKey, (req, res) => {
+// GET /personas
+v1Router.get('/personas', requireApiKey, (req, res) => {
     try {
         const { search, limit = 100, offset = 0 } = req.query;
         let personas;
@@ -245,15 +255,15 @@ app.get('/api/personas', requireApiKey, (req, res) => {
         }
 
         const total = db.prepare('SELECT COUNT(*) as count FROM personas').get();
-        res.json({ success: true, data: personas, count: personas.length, total: total.count });
+        res.json({ success: true, data: personas, count: personas.length, total: total.count, api: 'v1' });
     } catch (error) {
         console.error('❌ Error:', error.message);
         res.status(500).json({ success: false, message: 'Error interno' });
     }
 });
 
-// GET /api/personas/:id
-app.get('/api/personas/:id', requireApiKey, (req, res) => {
+// GET /personas/:id
+v1Router.get('/personas/:id', requireApiKey, (req, res) => {
     try {
         const persona = db.prepare('SELECT * FROM personas WHERE id = ?').get(parseInt(req.params.id));
         if (!persona) return res.status(404).json({ success: false, message: 'Persona no encontrada' });
@@ -263,20 +273,20 @@ app.get('/api/personas/:id', requireApiKey, (req, res) => {
     }
 });
 
-// DELETE /api/personas/:id
-app.delete('/api/personas/:id', requireApiKey, (req, res) => {
+// DELETE /personas/:id
+v1Router.delete('/personas/:id', requireApiKey, (req, res) => {
     try {
         const result = db.prepare('DELETE FROM personas WHERE id = ?').run(parseInt(req.params.id));
         if (result.changes === 0) return res.status(404).json({ success: false, message: 'Persona no encontrada' });
-        console.log(`🗑️ Persona #${req.params.id} eliminada`);
+        console.log(`🗑️ Persona #${req.params.id} eliminada [v1]`);
         res.json({ success: true, message: 'Persona eliminada' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error interno' });
     }
 });
 
-// GET /api/stats
-app.get('/api/stats', requireApiKey, (req, res) => {
+// GET /stats
+v1Router.get('/stats', requireApiKey, (req, res) => {
     try {
         const total = db.prepare('SELECT COUNT(*) as count FROM personas').get();
         const today = db.prepare("SELECT COUNT(*) as count FROM personas WHERE date(received_at) = date('now','localtime')").get();
@@ -285,6 +295,12 @@ app.get('/api/stats', requireApiKey, (req, res) => {
         res.status(500).json({ success: false, message: 'Error interno' });
     }
 });
+
+// ASIGNAR EL ROUTER
+app.use('/api/v1', v1Router);
+
+// Compatibilidad temporal con /api (sin v1) para no romper versiones actuales
+app.use('/api', v1Router);
 
 // ========================
 // 404 HANDLER
