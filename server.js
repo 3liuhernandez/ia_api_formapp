@@ -53,7 +53,6 @@ app.use(express.json({ limit: '1mb' }));
 // API KEY AUTH MIDDLEWARE
 // ========================
 function requireApiKey(req, res, next) {
-    // In development without API_KEY set, skip auth
     if (NODE_ENV === 'development' && !API_KEY) {
         return next();
     }
@@ -61,11 +60,12 @@ function requireApiKey(req, res, next) {
     const key = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
 
     if (!key) {
+        recordFailedAttempt(req);
         return res.status(401).json({ success: false, message: 'API Key requerida' });
     }
 
-    // Constant-time comparison to prevent timing attacks
     if (!API_KEY || !timingSafeEqual(key, API_KEY)) {
+        recordFailedAttempt(req);
         return res.status(403).json({ success: false, message: 'API Key inválida' });
     }
 
@@ -119,6 +119,57 @@ app.use((req, res, next) => {
         }
     });
     next();
+});
+
+// ========================
+// SECURITY: IP BANNING & HONEYPOTS
+// ========================
+const bannedIPs = new Map(); // IP -> expiration context
+const failedAttempts = new Map(); // IP -> count
+
+const BAN_THRESHOLD = 5; // Bloquear tras 5 intentos fallidos
+const BAN_DURATION = 24 * 60 * 60 * 1000; // 24 horas
+
+function ipBanMiddleware(req, res, next) {
+  const ip = req.ip || req.connection.remoteAddress;
+  
+  if (bannedIPs.has(ip)) {
+    const expiry = bannedIPs.get(ip);
+    if (Date.now() < expiry) {
+      console.log(`🚫 Bloqueado intento de IP baneada: ${ip}`);
+      return res.status(403).json({ message: 'Acceso denegado permanentemente' });
+    }
+    bannedIPs.delete(ip);
+  }
+  next();
+}
+
+function recordFailedAttempt(req) {
+  const ip = req.ip || req.connection.remoteAddress;
+  const count = (failedAttempts.get(ip) || 0) + 1;
+  failedAttempts.set(ip, count);
+  
+  if (count >= BAN_THRESHOLD) {
+    console.error(`🚨 BANEANDO IP por múltiples fallos: ${ip}`);
+    bannedIPs.set(ip, Date.now() + BAN_DURATION);
+  }
+}
+
+app.use(ipBanMiddleware);
+
+// Honeypots: Rutas atractivas para bots que causan ban inmediato
+const honeypots = [
+  '/.env', '/wp-admin', '/wp-login.php', '/config.php', '/index.php',
+  '/.git', '/.vscode', '/graphql', '/api-docs', '/swagger'
+];
+
+honeypots.forEach(path => {
+  app.all(path, (req, res) => {
+    const ip = req.ip || req.connection.remoteAddress;
+    console.error(`🪤 TRAMPA ACTIVADA: IP ${ip} intentó acceder a ${path}`);
+    bannedIPs.set(ip, Date.now() + BAN_DURATION);
+    res.status(403).json({ message: 'Trampa detectada' });
+  });
 });
 
 // ========================
@@ -290,7 +341,7 @@ v1Router.get('/stats', requireApiKey, (req, res) => {
     try {
         const total = db.prepare('SELECT COUNT(*) as count FROM personas').get();
         const today = db.prepare("SELECT COUNT(*) as count FROM personas WHERE date(received_at) = date('now','localtime')").get();
-        res.json({ success: true, data: { total: total.count, today: today.count } });
+        res.json({ success: true, data: { total: total.count, today: today.count, banned: bannedIPs.size } });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error interno' });
     }
@@ -306,7 +357,8 @@ app.use('/api', v1Router);
 // 404 HANDLER
 // ========================
 app.use((req, res) => {
-    res.status(404).json({ success: false, message: 'Ruta no encontrada' });
+    recordFailedAttempt(req);
+    res.status(404).json({ success: false, message: 'Ruta no permitida' });
 });
 
 // ========================
