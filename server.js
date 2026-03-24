@@ -131,45 +131,45 @@ const BAN_THRESHOLD = 5; // Bloquear tras 5 intentos fallidos
 const BAN_DURATION = 24 * 60 * 60 * 1000; // 24 horas
 
 function ipBanMiddleware(req, res, next) {
-  const ip = req.ip || req.connection.remoteAddress;
-  
-  if (bannedIPs.has(ip)) {
-    const expiry = bannedIPs.get(ip);
-    if (Date.now() < expiry) {
-      console.log(`🚫 Bloqueado intento de IP baneada: ${ip}`);
-      return res.status(403).json({ message: 'Acceso denegado permanentemente' });
+    const ip = req.ip || req.connection.remoteAddress;
+
+    if (bannedIPs.has(ip)) {
+        const expiry = bannedIPs.get(ip);
+        if (Date.now() < expiry) {
+            console.log(`🚫 Bloqueado intento de IP baneada: ${ip}`);
+            return res.status(403).json({ message: 'Acceso denegado permanentemente' });
+        }
+        bannedIPs.delete(ip);
     }
-    bannedIPs.delete(ip);
-  }
-  next();
+    next();
 }
 
 function recordFailedAttempt(req) {
-  const ip = req.ip || req.connection.remoteAddress;
-  const count = (failedAttempts.get(ip) || 0) + 1;
-  failedAttempts.set(ip, count);
-  
-  if (count >= BAN_THRESHOLD) {
-    console.error(`🚨 BANEANDO IP por múltiples fallos: ${ip}`);
-    bannedIPs.set(ip, Date.now() + BAN_DURATION);
-  }
+    const ip = req.ip || req.connection.remoteAddress;
+    const count = (failedAttempts.get(ip) || 0) + 1;
+    failedAttempts.set(ip, count);
+
+    if (count >= BAN_THRESHOLD) {
+        console.error(`🚨 BANEANDO IP por múltiples fallos: ${ip}`);
+        bannedIPs.set(ip, Date.now() + BAN_DURATION);
+    }
 }
 
 app.use(ipBanMiddleware);
 
 // Honeypots: Rutas atractivas para bots que causan ban inmediato
 const honeypots = [
-  '/.env', '/wp-admin', '/wp-login.php', '/config.php', '/index.php',
-  '/.git', '/.vscode', '/graphql', '/api-docs', '/swagger'
+    '/.env', '/wp-admin', '/wp-login.php', '/config.php', '/index.php',
+    '/.git', '/.vscode', '/graphql', '/api-docs', '/swagger'
 ];
 
 honeypots.forEach(path => {
-  app.all(path, (req, res) => {
-    const ip = req.ip || req.connection.remoteAddress;
-    console.error(`🪤 TRAMPA ACTIVADA: IP ${ip} intentó acceder a ${path}`);
-    bannedIPs.set(ip, Date.now() + BAN_DURATION);
-    res.status(403).json({ message: 'Trampa detectada' });
-  });
+    app.all(path, (req, res) => {
+        const ip = req.ip || req.connection.remoteAddress;
+        console.error(`🪤 TRAMPA ACTIVADA: IP ${ip} intentó acceder a ${path}`);
+        bannedIPs.set(ip, Date.now() + BAN_DURATION);
+        res.status(403).json({ message: 'Trampa detectada' });
+    });
 });
 
 // ========================
@@ -178,7 +178,7 @@ honeypots.forEach(path => {
 const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'database.sqlite');
 const dbDir = path.dirname(dbPath);
 if (!require('fs').existsSync(dbDir)) {
-  require('fs').mkdirSync(dbDir, { recursive: true });
+    require('fs').mkdirSync(dbDir, { recursive: true });
 }
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
@@ -379,3 +379,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`   Auth:     ${API_KEY ? '✅ API Key configurada' : '⚠️  Sin API Key (desarrollo)'}`);
     console.log(`   DB:       ${dbPath}\n`);
 });
+
+// ========================
+// finished at 2026-03-24 12:25
+// ========================
