@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const app = express();
+app.set('trust proxy', true); // Requerido para ver la IP real tras Coolify/Traefik
 const PORT = process.env.PORT || 3001;
 const API_KEY = process.env.API_KEY || '';
 const NODE_ENV = process.env.NODE_ENV || 'development';
