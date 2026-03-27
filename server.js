@@ -44,6 +44,7 @@ const limiter = rateLimit({
     message: { success: false, message: 'Demasiadas peticiones, intenta más tarde' },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false }, // Disable trust proxy validation warning
 });
 app.use('/api/', limiter);
 
