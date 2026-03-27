@@ -293,6 +293,28 @@ v1Router.post('/registrants', requireApiKey, (req, res) => {
     }
 });
 
+// GET /registrants
+v1Router.get('/registrants', requireApiKey, (req, res) => {
+    try {
+        const { search, limit = 100, offset = 0 } = req.query;
+        let registrants;
+
+        if (search) {
+            const term = `%${sanitize(search)}%`;
+            registrants = db.prepare(`SELECT * FROM registrants WHERE nombres LIKE ? OR apellidos LIKE ? OR cedula LIKE ? OR email LIKE ?
+        ORDER BY nombres DESC LIMIT ? OFFSET ?`).all(term, term, term, term, parseInt(limit), parseInt(offset));
+        } else {
+            registrants = db.prepare('SELECT * FROM registrants ORDER BY nombres DESC LIMIT ? OFFSET ?').all(parseInt(limit), parseInt(offset));
+        }
+
+        const total = db.prepare('SELECT COUNT(*) as count FROM registrants').get();
+        res.json({ success: true, data: registrants, count: registrants.length, total: total.count, api: 'v1' });
+    } catch (error) {
+        console.error('❌ Error:', error.message);
+        res.status(500).json({ success: false, message: 'Error interno' });
+    }
+});
+
 // POST /personas
 v1Router.post('/personas', requireApiKey, (req, res) => {
     try {
