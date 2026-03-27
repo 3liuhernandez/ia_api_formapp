@@ -301,10 +301,34 @@ v1Router.get('/registrants', requireApiKey, (req, res) => {
 
         if (search) {
             const term = `%${sanitize(search)}%`;
-            registrants = db.prepare(`SELECT * FROM registrants WHERE nombres LIKE ? OR apellidos LIKE ? OR cedula LIKE ? OR email LIKE ?
-        ORDER BY nombres DESC LIMIT ? OFFSET ?`).all(term, term, term, term, parseInt(limit), parseInt(offset));
+
+            if (search == 'today') {
+
+                registrants = db.prepare(`
+                    SELECT * 
+                    FROM registrants 
+                    WHERE created_at >= date('now','localtime') 
+                    ORDER BY created_at DESC 
+                    LIMIT ? OFFSET ?
+                `).all(parseInt(limit), parseInt(offset));
+
+            } else {
+                registrants = db.prepare(`
+                    SELECT * 
+                    FROM registrants 
+                    WHERE nombres LIKE ? OR apellidos LIKE ? OR cedula LIKE ? OR email LIKE ?
+                    ORDER BY created_at DESC 
+                    LIMIT ? OFFSET ?
+                `).all(term, term, term, term, parseInt(limit), parseInt(offset));
+            }
+
         } else {
-            registrants = db.prepare('SELECT * FROM registrants ORDER BY nombres DESC LIMIT ? OFFSET ?').all(parseInt(limit), parseInt(offset));
+            registrants = db.prepare(`
+                SELECT * 
+                FROM registrants 
+                ORDER BY created_at DESC 
+                LIMIT ? OFFSET ?
+            `).all(parseInt(limit), parseInt(offset));
         }
 
         const total = db.prepare('SELECT COUNT(*) as count FROM registrants').get();
