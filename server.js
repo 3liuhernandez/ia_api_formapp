@@ -239,6 +239,30 @@ for (const col of newCols) {
 console.log('✅ Base de datos inicializada');
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    role INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+`);
+
+// Insert default admin if not exists
+try {
+    const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
+    if (adminCount && adminCount.count === 0) {
+        db.prepare('INSERT INTO users (username, password_hash, nombre, role) VALUES (?, ?, ?, ?)').run(
+            'admin', 'admin123', 'Administrador Global', 3
+        );
+        console.log('👤 Usuario admin creado en la API');
+    }
+} catch (e) {
+    console.error('Error initializing admin user:', e.message);
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS registrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cedula TEXT NOT NULL UNIQUE,
@@ -270,6 +294,49 @@ const v1Router = express.Router();
 // Public health check on v1 too
 v1Router.get('/health', (req, res) => {
     res.json({ success: true, status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0', api: 'v1' });
+});
+
+// POST /auth/login
+v1Router.post('/auth/login', requireApiKey, (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ success: false, message: 'Usuario y contraseña requeridos' });
+        }
+
+        const user = db.prepare('SELECT id, username, nombre, role, password_hash FROM users WHERE username = ?').get(username);
+
+        if (!user || user.password_hash !== password) {
+            recordFailedAttempt(req);
+            return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+        }
+
+        // En un entorno real, aquí generaríamos un JWT real.
+        // Por ahora simulamos un token basado en el ID y username.
+        const mockToken = Buffer.from(`${user.id}:${user.username}:${Date.now()}`).toString('base64');
+        
+        // Expiración en 24h
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+        console.log(`🔐 Login exitoso: ${user.username} (Rol: ${user.role}) [v1]`);
+        
+        res.json({
+            success: true,
+            message: 'Login exitoso',
+            data: {
+                id: user.id,
+                username: user.username,
+                nombre: user.nombre,
+                role: user.role,
+                token: mockToken,
+                expires_at: expiresAt
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error en login:', error.message);
+        res.status(500).json({ success: false, message: 'Error interno del servidor' });
+    }
 });
 
 // POST /registrants
