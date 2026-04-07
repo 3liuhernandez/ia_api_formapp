@@ -254,7 +254,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
+    password TEXT NOT NULL,
     nombre TEXT NOT NULL,
     role INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -265,7 +265,7 @@ db.exec(`
 try {
     const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
     if (adminCount && adminCount.count === 0) {
-        db.prepare('INSERT INTO users (username, password_hash, nombre, role) VALUES (?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO users (username, password, nombre, role) VALUES (?, ?, ?, ?)').run(
             'admin', 'admin123', 'Administrador Global', 3
         );
         console.log('👤 Usuario admin creado en la API');
@@ -321,9 +321,9 @@ v1Router.post('/auth/login', requireApiKey, (req, res) => {
             return res.status(400).json({ success: false, message: 'Usuario y contraseña requeridos' });
         }
 
-        const user = db.prepare('SELECT id, username, nombre, role, password_hash FROM users WHERE username = ?').get(username);
+        const user = db.prepare('SELECT id, username, nombre, role, password FROM users WHERE username = ?').get(username);
 
-        if (!user || user.password_hash !== password) {
+        if (!user || user.password !== password) {
             recordFailedAttempt(req);
             return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
         }

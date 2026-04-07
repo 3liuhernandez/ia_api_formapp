@@ -37,7 +37,7 @@ try {
                 console.error('Error: Faltan argumentos (user, pass, nombre)');
                 process.exit(1);
             }
-            db.prepare('INSERT INTO users (username, password_hash, nombre, role) VALUES (?, ?, ?, ?)')
+            db.prepare('INSERT INTO users (username, password, nombre, role) VALUES (?, ?, ?, ?)')
                 .run(username, password, nombre, parseInt(role) || 1);
             console.log(`✅ Usuario ${username} creado con éxito`);
             break;
@@ -71,7 +71,7 @@ try {
                 console.error('Error: Usuario y clave requeridos');
                 process.exit(1);
             }
-            db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(newPass, userPass);
+            db.prepare('UPDATE users SET password = ? WHERE username = ?').run(newPass, userPass);
             console.log(`✅ Contraseña de ${userPass} actualizada`);
             break;
 
