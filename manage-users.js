@@ -18,6 +18,8 @@ Comandos disponibles:
   delete <user>             Elimina un usuario
   role <user> <role>        Cambia el rol de un usuario
   pass <user> <new-pass>    Cambia la contraseña
+  bans                      Lista IPs baneadas
+  unban <ip>                Desbanea una IP
 `);
     process.exit(0);
 }
@@ -71,6 +73,23 @@ try {
             }
             db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(newPass, userPass);
             console.log(`✅ Contraseña de ${userPass} actualizada`);
+            break;
+
+        case 'bans':
+            const activeBans = db.prepare('SELECT ip, expires_at FROM bans').all();
+            if (activeBans.length === 0) console.log('✅ No hay IPs baneadas actualmente');
+            else console.table(activeBans);
+            break;
+
+        case 'unban':
+            const ipToUnban = args[1];
+            if (!ipToUnban) {
+                console.error('Error: IP requerida');
+                process.exit(1);
+            }
+            const banInfo = db.prepare('DELETE FROM bans WHERE ip = ?').run(ipToUnban);
+            if (banInfo.changes > 0) console.log(`✅ IP ${ipToUnban} desbaneada con éxito`);
+            else console.log('⚠️ La IP no estaba en la lista de baneos');
             break;
 
         default:

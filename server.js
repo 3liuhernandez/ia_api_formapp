@@ -142,7 +142,6 @@ app.use((req, res, next) => {
 // ========================
 // SECURITY: IP BANNING & HONEYPOTS
 // ========================
-const bannedIPs = new Map(); // IP -> expiration context
 const failedAttempts = new Map(); // IP -> count
 
 const BAN_THRESHOLD = 5; // Bloquear tras 5 intentos fallidos
@@ -151,13 +150,20 @@ const BAN_DURATION = 24 * 60 * 60 * 1000; // 24 horas
 function ipBanMiddleware(req, res, next) {
     const ip = req.ip || req.connection.remoteAddress;
 
-    if (bannedIPs.has(ip)) {
-        const expiry = bannedIPs.get(ip);
-        if (Date.now() < expiry) {
-            console.log(`🚫 Bloqueado intento de IP baneada: ${ip}`);
-            return res.status(403).json({ message: 'Acceso denegado permanentemente' });
+    try {
+        const ban = db.prepare("SELECT expires_at FROM bans WHERE ip = ?").get(ip);
+        if (ban) {
+            const expiry = new Date(ban.expires_at).getTime();
+            if (Date.now() < expiry) {
+                console.log(`🚫 Intento bloqueado de IP baneada: ${ip}`);
+                return res.status(403).json({ success: false, message: 'Acceso denegado. IP baneada temporalmente.' });
+            } else {
+                // Ban expired, remove it
+                db.prepare("DELETE FROM bans WHERE ip = ?").run(ip);
+            }
         }
-        bannedIPs.delete(ip);
+    } catch (e) {
+        console.error('Error checking bans:', e.message);
     }
     next();
 }
@@ -168,8 +174,14 @@ function recordFailedAttempt(req) {
     failedAttempts.set(ip, count);
 
     if (count >= BAN_THRESHOLD) {
-        console.error(`🚨 BANEANDO IP por múltiples fallos: ${ip}`);
-        bannedIPs.set(ip, Date.now() + BAN_DURATION);
+        const expiresAt = new Date(Date.now() + BAN_DURATION).toISOString();
+        console.error(`🚨 BANEANDO IP por múltiples fallos: ${ip} hasta ${expiresAt}`);
+        try {
+            db.prepare("INSERT OR REPLACE INTO bans (ip, expires_at) VALUES (?, ?)").run(ip, expiresAt);
+            failedAttempts.delete(ip); // Reset counter once banned
+        } catch (e) {
+            console.error('Error recording ban:', e.message);
+        }
     }
 }
 
@@ -263,6 +275,11 @@ try {
 }
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS bans (
+    ip TEXT PRIMARY KEY,
+    expires_at TEXT NOT NULL
+  );
+  
   CREATE TABLE IF NOT EXISTS registrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cedula TEXT NOT NULL UNIQUE,
@@ -336,6 +353,27 @@ v1Router.post('/auth/login', requireApiKey, (req, res) => {
     } catch (error) {
         console.error('❌ Error en login:', error.message);
         res.status(500).json({ success: false, message: 'Error interno del servidor' });
+    }
+});
+
+// POST /auth/unban
+v1Router.post('/auth/unban', requireApiKey, (req, res) => {
+    try {
+        const { ip } = req.body;
+        if (!ip) return res.status(400).json({ success: false, message: 'IP requerida' });
+
+        const result = db.prepare('DELETE FROM bans WHERE ip = ?').run(ip);
+        failedAttempts.delete(ip); // Also clear transient counter
+
+        if (result.changes > 0) {
+            console.log(`🔓 IP desbaneada: ${ip} [v1]`);
+            res.json({ success: true, message: `IP ${ip} desbaneada exitosamente` });
+        } else {
+            res.status(404).json({ success: false, message: 'La IP no estaba baneada' });
+        }
+    } catch (error) {
+        console.error('❌ Error al desbanear:', error.message);
+        res.status(500).json({ success: false, message: 'Error interno' });
     }
 });
 

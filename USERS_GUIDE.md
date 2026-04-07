@@ -10,6 +10,8 @@ Este método es ideal para **Coolify/Docker**, ya que usa las librerías del pro
 *   **Cambiar Clave**: `node manage-users.js pass <usuario> <nueva_clave>`
 *   **Cambiar Rol**: `node manage-users.js role <usuario> <nuevo_rol>`
 *   **Eliminar**: `node manage-users.js delete <usuario>`
+*   **Listar Baneos**: `node manage-users.js bans`
+*   **Desbanear IP**: `node manage-users.js unban <ip>`
 
 ## 2. Acceder mediante SQL (Alternativa)
 Si tienes el binario `sqlite3` en tu host:
