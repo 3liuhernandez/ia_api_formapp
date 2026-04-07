@@ -1,19 +1,18 @@
 # Guía de Gestión Manual de Usuarios (API)
 
-Esta guía contiene los comandos SQL necesarios para gestionar los usuarios de la base de datos de la API directamente desde la terminal de tu VPS.
+Esta guía contiene los comandos necesarios para gestionar los usuarios de la base de datos de la API.
 
-## 1. Acceder a la Base de Datos
-Desde el directorio de la API (`/ruta/a/ia/api`), ejecuta:
+## 1. Método Preferido (Node.js)
+Este método es ideal para **Coolify/Docker**, ya que usa las librerías del proyecto y no se borra al hacer un deploy.
 
-```bash
-sqlite3 database.sqlite
-```
+*   **Listar todos**: `node manage-users.js list`
+*   **Añadir**: `node manage-users.js add <usuario> <clave> <nombre> <rol>`
+*   **Cambiar Clave**: `node manage-users.js pass <usuario> <nueva_clave>`
+*   **Cambiar Rol**: `node manage-users.js role <usuario> <nuevo_rol>`
+*   **Eliminar**: `node manage-users.js delete <usuario>`
 
-*(Si no tienes `sqlite3` instalado, puedes usar `sudo apt install sqlite3` en Ubuntu/Debian).*
-
----
-
-## 2. Operaciones CRUD (SQL)
+## 2. Acceder mediante SQL (Alternativa)
+Si tienes el binario `sqlite3` en tu host:
 
 Una vez dentro de la terminal de SQLite (`sqlite>`), puedes usar los siguientes comandos:
 
