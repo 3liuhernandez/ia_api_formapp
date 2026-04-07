@@ -397,19 +397,35 @@ v1Router.post('/personas/batch', requireApiKey, (req, res) => {
 // GET /personas
 v1Router.get('/personas', requireApiKey, (req, res) => {
     try {
-        const { search, limit = 100, offset = 0 } = req.query;
+        const { search, limit = 100, offset = 0, start_date, end_date } = req.query;
         let personas;
+        let queryParams = [];
+        let conditions = [];
 
         if (search) {
             const term = `%${sanitize(search)}%`;
-            personas = db.prepare(`SELECT * FROM personas WHERE nombre LIKE ? OR cedula LIKE ? OR telefono LIKE ? OR email LIKE ? OR sector_barrio LIKE ?
-        ORDER BY received_at DESC LIMIT ? OFFSET ?`).all(term, term, term, term, term, parseInt(limit), parseInt(offset));
-        } else {
-            personas = db.prepare('SELECT * FROM personas ORDER BY received_at DESC LIMIT ? OFFSET ?').all(parseInt(limit), parseInt(offset));
+            conditions.push(`(nombre LIKE ? OR cedula LIKE ? OR telefono LIKE ? OR email LIKE ? OR sector_barrio LIKE ?)`);
+            queryParams.push(term, term, term, term, term);
         }
 
-        const total = db.prepare('SELECT COUNT(*) as count FROM personas').get();
-        res.json({ success: true, data: personas, count: personas.length, total: total.count, api: 'v1' });
+        if (start_date && end_date) {
+            // Convirtiendo a Date y permitiendo el dia completo
+            conditions.push(`date(received_at) >= date(?) AND date(received_at) <= date(?)`);
+            queryParams.push(sanitize(start_date), sanitize(end_date));
+        }
+
+        let whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        personas = db.prepare(`
+            SELECT * FROM personas 
+            ${whereClause}
+            ORDER BY received_at DESC 
+            LIMIT ? OFFSET ?
+        `).all(...queryParams, parseInt(limit), parseInt(offset));
+
+        const totalQuery = db.prepare(`SELECT COUNT(*) as count FROM personas ${whereClause}`).get(...queryParams);
+        
+        res.json({ success: true, data: personas, count: personas.length, total: totalQuery.count, api: 'v1' });
     } catch (error) {
         console.error('❌ Error:', error.message);
         res.status(500).json({ success: false, message: 'Error interno' });
