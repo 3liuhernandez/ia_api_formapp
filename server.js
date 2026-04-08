@@ -255,18 +255,30 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
-    nombre TEXT NOT NULL,
+    name TEXT NOT NULL,
     role INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
 
+// Migración: Renombrar 'nombre' a 'name' si es necesario
+/* const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (userCols.includes('nombre') && !userCols.includes('name')) {
+    try {
+        db.exec("ALTER TABLE users RENAME COLUMN nombre TO name");
+        console.log("📦 Columna 'nombre' renombrada a 'name' en la tabla 'users'");
+    } catch (e) {
+        console.error("⚠️ Error migrando columna de usuarios:", e.message);
+    }
+} */
+
+
 // Insert default admin if not exists
 try {
-    const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
+    const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('iuser');
     if (adminCount && adminCount.count === 0) {
-        db.prepare('INSERT INTO users (username, password, nombre, role) VALUES (?, ?, ?, ?)').run(
-            'admin', 'admin123', 'Administrador Global', 3
+        db.prepare('INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)').run(
+            'iuser', 'Iuser3548**', 'Admin iUser', 3
         );
         console.log('👤 Usuario admin creado en la API');
     }
@@ -321,7 +333,7 @@ v1Router.post('/auth/login', requireApiKey, (req, res) => {
             return res.status(400).json({ success: false, message: 'Usuario y contraseña requeridos' });
         }
 
-        const user = db.prepare('SELECT id, username, nombre, role, password FROM users WHERE username = ?').get(username);
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
 
         if (!user || user.password !== password) {
             recordFailedAttempt(req);
@@ -331,19 +343,19 @@ v1Router.post('/auth/login', requireApiKey, (req, res) => {
         // En un entorno real, aquí generaríamos un JWT real.
         // Por ahora simulamos un token basado en el ID y username.
         const mockToken = Buffer.from(`${user.id}:${user.username}:${Date.now()}`).toString('base64');
-        
+
         // Expiración en 24h
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
         console.log(`🔐 Login exitoso: ${user.username} (Rol: ${user.role}) [v1]`);
-        
+
         res.json({
             success: true,
             message: 'Login exitoso',
             data: {
                 id: user.id,
                 username: user.username,
-                nombre: user.nombre,
+                name: user.name,
                 role: user.role,
                 token: mockToken,
                 expires_at: expiresAt
@@ -529,7 +541,7 @@ v1Router.get('/personas', requireApiKey, (req, res) => {
         `).all(...queryParams, parseInt(limit), parseInt(offset));
 
         const totalQuery = db.prepare(`SELECT COUNT(*) as count FROM personas ${whereClause}`).get(...queryParams);
-        
+
         res.json({ success: true, data: personas, count: personas.length, total: totalQuery.count, api: 'v1' });
     } catch (error) {
         console.error('❌ Error:', error.message);
