@@ -210,6 +210,10 @@ const dbDir = path.dirname(dbPath);
 if (!require('fs').existsSync(dbDir)) {
     require('fs').mkdirSync(dbDir, { recursive: true });
 }
+
+// BORRAR DESPUÉS DE UN RESTART: Esto limpia la DB completa
+// require('fs').unlinkSync(dbPath);
+
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
