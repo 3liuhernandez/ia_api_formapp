@@ -143,6 +143,7 @@ app.use((req, res, next) => {
 // SECURITY: IP BANNING & HONEYPOTS
 // ========================
 const failedAttempts = new Map(); // IP -> count
+const bannedIPs = new Map(); // Caché rápida en memoria para IP baneadas
 
 const BAN_THRESHOLD = 5; // Bloquear tras 5 intentos fallidos
 const BAN_DURATION = 24 * 60 * 60 * 1000; // 24 horas
@@ -197,7 +198,16 @@ honeypots.forEach(path => {
     app.all(path, (req, res) => {
         const ip = req.ip || req.connection.remoteAddress;
         console.error(`🪤 TRAMPA ACTIVADA: IP ${ip} intentó acceder a ${path}`);
-        bannedIPs.set(ip, Date.now() + BAN_DURATION);
+        
+        const expiresAt = new Date(Date.now() + BAN_DURATION).toISOString();
+        try {
+            // Ban inmediato en la DB
+            db.prepare("INSERT OR REPLACE INTO bans (ip, expires_at) VALUES (?, ?)").run(ip, expiresAt);
+            bannedIPs.set(ip, Date.now() + BAN_DURATION); // Opcional: caché en memoria
+        } catch (e) {
+            console.error('Error al banear desde trampa:', e.message);
+        }
+        
         res.status(403).json({ message: 'Trampa detectada' });
     });
 });
@@ -581,7 +591,8 @@ v1Router.get('/stats', requireApiKey, (req, res) => {
     try {
         const total = db.prepare('SELECT COUNT(*) as count FROM personas').get();
         const today = db.prepare("SELECT COUNT(*) as count FROM personas WHERE date(received_at) = date('now','localtime')").get();
-        res.json({ success: true, data: { total: total.count, today: today.count, banned: bannedIPs.size } });
+        const banned = db.prepare('SELECT COUNT(*) as count FROM bans').get();
+        res.json({ success: true, data: { total: total.count, today: today.count, banned: banned.count } });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error interno' });
     }
