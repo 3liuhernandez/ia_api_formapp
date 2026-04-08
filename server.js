@@ -6,6 +6,8 @@ const rateLimit = require('express-rate-limit');
 const Database = require('better-sqlite3');
 const path = require('path');
 const crypto = require('crypto');
+const multer = require('multer');
+const fs = require('fs');
 
 const app = express();
 app.set('trust proxy', true); // Requerido para ver la IP real tras Coolify/Traefik
@@ -213,6 +215,30 @@ honeypots.forEach(path => {
 });
 
 // ========================
+// APP UPDATES CONFIG
+// ========================
+const publicDir = path.join(__dirname, 'public');
+const updatesDir = path.join(publicDir, 'updates');
+if (!fs.existsSync(updatesDir)) fs.mkdirSync(updatesDir, { recursive: true });
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, updatesDir),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`)
+});
+
+const upload = multer({ 
+    storage,
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+    fileFilter: (req, file, cb) => {
+        if (file.originalname.endsWith('.apk')) cb(null, true);
+        else cb(new Error('Solo se permiten archivos .apk'));
+    }
+});
+
+// Servir archivos estáticos
+app.use('/public', express.static(publicDir));
+
+// ========================
 // DATABASE
 // ========================
 const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'database.sqlite');
@@ -318,6 +344,14 @@ db.exec(`
     model TEXT DEFAULT '',
     os_version TEXT DEFAULT '',
     device_id TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+  );
+
+  CREATE TABLE IF NOT EXISTS app_updates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    version TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    release_notes TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
 `);
@@ -596,6 +630,66 @@ v1Router.get('/stats', requireApiKey, (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error interno' });
     }
+});
+
+// ========================
+// APP UPDATES ROUTES
+// ========================
+
+// GET /updates/latest - Consultar última versión (Usado por la App)
+v1Router.get('/updates/latest', (req, res) => {
+    try {
+        const latest = db.prepare('SELECT * FROM app_updates ORDER BY id DESC LIMIT 1').get();
+        
+        if (!latest) {
+            return res.json({
+                success: true,
+                data: { version: '1.0.0', downloadUrl: null, releaseNotes: 'Sin actualizaciones' }
+            });
+        }
+
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const host = req.get('host');
+        const downloadUrl = `${protocol}://${host}/public/updates/${latest.filename}`;
+
+        res.json({
+            success: true,
+            data: {
+                version: latest.version,
+                downloadUrl: downloadUrl,
+                releaseNotes: latest.release_notes,
+                date: latest.created_at
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al consultar actualizaciones' });
+    }
+});
+
+// POST /updates/upload - Subir nuevo APK y actualizar versión (Usado por ti)
+v1Router.post('/updates/upload', requireApiKey, (req, res) => {
+    upload.single('apk')(req, res, (err) => {
+        if (err) return res.status(400).json({ success: false, message: err.message });
+        if (!req.file) return res.status(400).json({ success: false, message: 'Archivo APK requerido' });
+
+        const { version, releaseNotes } = req.body;
+        if (!version) return res.status(400).json({ success: false, message: 'Versión requerida' });
+
+        try {
+            db.prepare('INSERT INTO app_updates (version, filename, release_notes) VALUES (?, ?, ?)')
+              .run(version, req.file.filename, releaseNotes || '');
+
+            console.log(`🚀 Nuevo APK subido: Versión ${version}`);
+            res.json({ 
+                success: true, 
+                message: 'Update publicado con éxito', 
+                data: { version, filename: req.file.filename } 
+            });
+        } catch (error) {
+            console.error('❌ Error guardando update:', error.message);
+            res.status(500).json({ success: false, message: 'Error en base de datos' });
+        }
+    });
 });
 
 // ASIGNAR EL ROUTER

@@ -143,3 +143,4 @@ vite.config.ts.timestamp-*
 *.sqlite-shm
 *.sqlite-wal
 
+app-apks-updates/*
