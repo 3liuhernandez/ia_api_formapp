@@ -200,7 +200,7 @@ honeypots.forEach(path => {
     app.all(path, (req, res) => {
         const ip = req.ip || req.connection.remoteAddress;
         console.error(`🪤 TRAMPA ACTIVADA: IP ${ip} intentó acceder a ${path}`);
-        
+
         const expiresAt = new Date(Date.now() + BAN_DURATION).toISOString();
         try {
             // Ban inmediato en la DB
@@ -209,7 +209,7 @@ honeypots.forEach(path => {
         } catch (e) {
             console.error('Error al banear desde trampa:', e.message);
         }
-        
+
         res.status(403).json({ message: 'Trampa detectada' });
     });
 });
@@ -223,10 +223,10 @@ if (!fs.existsSync(updatesDir)) fs.mkdirSync(updatesDir, { recursive: true });
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, updatesDir),
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`)
+    filename: (req, file, cb) => cb(null, file.originalname)
 });
 
-const upload = multer({ 
+const upload = multer({
     storage,
     limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
     fileFilter: (req, file, cb) => {
@@ -640,7 +640,7 @@ v1Router.get('/stats', requireApiKey, (req, res) => {
 v1Router.get('/updates/latest', (req, res) => {
     try {
         const latest = db.prepare('SELECT * FROM app_updates ORDER BY id DESC LIMIT 1').get();
-        
+
         if (!latest) {
             return res.json({
                 success: true,
@@ -677,13 +677,13 @@ v1Router.post('/updates/upload', requireApiKey, (req, res) => {
 
         try {
             db.prepare('INSERT INTO app_updates (version, filename, release_notes) VALUES (?, ?, ?)')
-              .run(version, req.file.filename, releaseNotes || '');
+                .run(version, req.file.filename, releaseNotes || '');
 
             console.log(`🚀 Nuevo APK subido: Versión ${version}`);
-            res.json({ 
-                success: true, 
-                message: 'Update publicado con éxito', 
-                data: { version, filename: req.file.filename } 
+            res.json({
+                success: true,
+                message: 'Update publicado con éxito',
+                data: { version, filename: req.file.filename }
             });
         } catch (error) {
             console.error('❌ Error guardando update:', error.message);
