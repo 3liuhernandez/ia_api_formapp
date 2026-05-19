@@ -27,18 +27,18 @@ Comandos disponibles:
 try {
     switch (command) {
         case 'list':
-            const users = db.prepare('SELECT id, username, nombre, role FROM users').all();
+            const users = db.prepare('SELECT id, username, name, role FROM users').all();
             console.table(users);
             break;
 
         case 'add':
-            const [username, password, nombre, role] = args.slice(1);
-            if (!username || !password || !nombre) {
+            const [username, password, name, role] = args.slice(1);
+            if (!username || !password || !name) {
                 console.error('Error: Faltan argumentos (user, pass, nombre)');
                 process.exit(1);
             }
-            db.prepare('INSERT INTO users (username, password, nombre, role) VALUES (?, ?, ?, ?)')
-                .run(username, password, nombre, parseInt(role) || 1);
+            db.prepare('INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)')
+                .run(username, password, name, parseInt(role) || 1);
             console.log(`✅ Usuario ${username} creado con éxito`);
             break;
 
