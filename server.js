@@ -88,6 +88,8 @@ function timingSafeEqual(a, b) {
 // INPUT SANITIZATION
 // ========================
 function sanitize(str) {
+    if (str === null || str === undefined) return '';
+    if (typeof str === 'number') str = str.toString();
     if (typeof str !== 'string') return '';
     return str.trim().replace(/[<>]/g, '').substring(0, 500);
 }
@@ -105,6 +107,7 @@ function sanitizePersona(body) {
         sector_barrio: sanitize(body.sector_barrio || ''),
         fecha_nacimiento: sanitize(body.fecha_nacimiento || ''),
         genero: ['M', 'F'].includes(body.genero) ? body.genero : 'M',
+        observaciones: sanitize(body.observaciones || ''),
         registrant_id: sanitize(body.registrant_id || ''),
     };
 }
@@ -279,6 +282,7 @@ const newCols = [
     { name: 'telefono_opcional', type: "TEXT DEFAULT ''" },
     { name: 'punto_referencia', type: "TEXT DEFAULT ''" },
     { name: 'sector_barrio', type: "TEXT DEFAULT ''" },
+    { name: 'observaciones', type: "TEXT DEFAULT ''" },
     { name: 'registrant_id', type: "TEXT DEFAULT ''" },
 ];
 for (const col of newCols) {
@@ -513,9 +517,9 @@ v1Router.post('/personas', requireApiKey, (req, res) => {
             return res.status(400).json({ success: false, message: 'Campos requeridos: nombre, cedula, telefono' });
         }
 
-        const stmt = db.prepare(`INSERT INTO personas (nombre, cedula, edad, telefono, telefono_opcional, email, direccion, punto_referencia, sector_barrio, fecha_nacimiento, genero, registrant_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-        const result = stmt.run(p.nombre, p.cedula, p.edad, p.telefono, p.telefono_opcional, p.email, p.direccion, p.punto_referencia, p.sector_barrio, p.fecha_nacimiento, p.genero, p.registrant_id);
+        const stmt = db.prepare(`INSERT INTO personas (nombre, cedula, edad, telefono, telefono_opcional, email, direccion, punto_referencia, sector_barrio, fecha_nacimiento, genero, observaciones, registrant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        const result = stmt.run(p.nombre, p.cedula, p.edad, p.telefono, p.telefono_opcional, p.email, p.direccion, p.punto_referencia, p.sector_barrio, p.fecha_nacimiento, p.genero, p.observaciones, p.registrant_id);
 
         console.log(`📝 Persona registrada: ${p.nombre} (ID: ${result.lastInsertRowid}) [v1]`);
         res.status(201).json({ success: true, message: 'Persona registrada', data: { id: result.lastInsertRowid } });
@@ -536,15 +540,15 @@ v1Router.post('/personas/batch', requireApiKey, (req, res) => {
             return res.status(400).json({ success: false, message: 'Máximo 500 registros por batch' });
         }
 
-        const stmt = db.prepare(`INSERT INTO personas (nombre, cedula, edad, telefono, telefono_opcional, email, direccion, punto_referencia, sector_barrio, fecha_nacimiento, genero, registrant_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        const stmt = db.prepare(`INSERT INTO personas (nombre, cedula, edad, telefono, telefono_opcional, email, direccion, punto_referencia, sector_barrio, fecha_nacimiento, genero, observaciones, registrant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
         const insertMany = db.transaction((items) => {
             const results = [];
             for (const item of items) {
                 const p = sanitizePersona(item);
                 if (!p.nombre || !p.cedula || !p.telefono) continue;
-                const result = stmt.run(p.nombre, p.cedula, p.edad, p.telefono, p.telefono_opcional, p.email, p.direccion, p.punto_referencia, p.sector_barrio, p.fecha_nacimiento, p.genero, p.registrant_id);
+                const result = stmt.run(p.nombre, p.cedula, p.edad, p.telefono, p.telefono_opcional, p.email, p.direccion, p.punto_referencia, p.sector_barrio, p.fecha_nacimiento, p.genero, p.observaciones, p.registrant_id);
                 results.push(result.lastInsertRowid);
             }
             return results;
