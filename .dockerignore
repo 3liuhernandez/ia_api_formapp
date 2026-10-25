@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Dependencias locales (se compilan en Docker)
+node_modules
+npm-debug.log*
+
+# Entorno y credenciales (se inyectan en Coolify)
+.env
+.env.*
+!.env.example
+
+# Datos y base de datos local (se manejan mediante volúmenes en Coolify)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/
+
+# Archivos temporales y logs
+logs/
+*.log
+.temp
+.cache
+
+# Scripts y APKs pesados de desarrollo
+app-apks-updates/
+
+# Documentación y archivos innecesarios en producción
+*.md
+todo.md
+ecosystem.config.js
