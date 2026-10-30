@@ -10,6 +10,15 @@ const multer = require('multer');
 const fs = require('fs');
 
 const app = express();
+// ========================
+// HELPERS
+// ========================
+function isLoopback(ip) {
+    if (!ip) return false;
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    return cleanIp === '127.0.0.1' || cleanIp === '::1' || cleanIp === 'localhost';
+}
+
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
 const API_KEY = process.env.API_KEY || '';
@@ -34,6 +43,20 @@ app.use(cors({
     methods: ['GET', 'POST', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
 }));
+
+
+// ========================
+// PUBLIC HEALTH & ROOT ROUTES (Exentos de rate limit y bans)
+// ========================
+app.get(['/', '/health', '/api/health'], (req, res) => {
+    res.json({
+        success: true,
+        status: 'ok',
+        service: 'ElimAPP API',
+        version: '2.0.0',
+        timestamp: new Date().toISOString()
+    });
+});
 
 const limiter = rateLimit({
     windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW_MINUTES) || 15) * 60 * 1000,
@@ -140,7 +163,8 @@ const BAN_THRESHOLD = 5;
 const BAN_DURATION = 24 * 60 * 60 * 1000;
 
 function ipBanMiddleware(req, res, next) {
-    const ip = req.ip || req.connection.remoteAddress;
+    const ip = req.ip || req.socket?.remoteAddress;
+    if (isLoopback(ip)) return next();
     try {
         const ban = db.prepare("SELECT expires_at FROM bans WHERE ip = ?").get(ip);
         if (ban) {
@@ -159,7 +183,8 @@ function ipBanMiddleware(req, res, next) {
 }
 
 function recordFailedAttempt(req) {
-    const ip = req.ip || req.connection.remoteAddress;
+    const ip = req.ip || req.socket?.remoteAddress;
+    if (isLoopback(ip)) return;
     const count = (failedAttempts.get(ip) || 0) + 1;
     failedAttempts.set(ip, count);
     if (count >= BAN_THRESHOLD) {
@@ -183,7 +208,8 @@ const honeypots = [
 
 honeypots.forEach(hp => {
     app.all(hp, (req, res) => {
-        const ip = req.ip || req.connection.remoteAddress;
+        const ip = req.ip || req.socket?.remoteAddress;
+        if (isLoopback(ip)) return res.status(404).json({ message: 'Not found' });
         console.error(`🪤 TRAMPA: IP ${ip} intentó ${hp}`);
         const expiresAt = new Date(Date.now() + BAN_DURATION).toISOString();
         try {
@@ -393,6 +419,16 @@ db.exec(`
 `);
 
 console.log('✅ Base de datos inicializada');
+
+// Limpiar bans accidentales de localhost/loopback
+try {
+    const unbanned = db.prepare("DELETE FROM bans WHERE ip IN ('127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost')").run();
+    if (unbanned.changes > 0) {
+        console.log(`🧹 Bans de localhost eliminados automáticamente (${unbanned.changes})`);
+    }
+} catch (e) {
+    console.error('Error limpiando bans de localhost:', e.message);
+}
 
 // Admin default (si no existe ningún user)
 try {
@@ -773,7 +809,10 @@ app.use('/api', v1Router);
 // 404 & ERROR
 // ========================
 app.use((req, res) => {
-    recordFailedAttempt(req);
+    const ip = req.ip || req.socket?.remoteAddress;
+    if (!['/favicon.ico', '/robots.txt'].includes(req.path) && !isLoopback(ip)) {
+        recordFailedAttempt(req);
+    }
     res.status(404).json({ success: false, message: 'Ruta no permitida' });
 });
 
