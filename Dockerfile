@@ -6,7 +6,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Instalar herramientas para compilar módulos nativos (better-sqlite3)
-RUN apk add --no-cache python3 make g++
+RUN for i in 1 2 3; do apk add --no-cache python3 make g++ && break || sleep 3; done
 
 # Copiar manifiestos primero para cachear dependencias
 COPY package*.json ./
@@ -26,7 +26,7 @@ WORKDIR /app
 # - curl: para el healthcheck de Coolify / Docker
 # - tzdata: zonas horarias
 # - su-exec: para cambiar de root a node de forma segura tras ajustar permisos
-RUN apk add --no-cache libstdc++ curl tzdata su-exec
+RUN for i in 1 2 3; do apk add --no-cache libstdc++ curl tzdata su-exec && break || sleep 3; done
 
 # Variables de entorno por defecto (Coolify puede sobrescribirlas desde su panel)
 ENV NODE_ENV=production \
