@@ -1,52 +1,30 @@
 # ==========================================
-# Etapa 1: Builder (Compilación de dependencias nativas C++)
+# Imagen base: Debian Slim oficial de Node.js
+# Ventajas:
+# - better-sqlite3 incluye binarios precompilados para Linux x64 (glibc).
+# - No requiere compilar C++ (cero python, make o g++).
+# - Cero dependencias de repositorios externos (evita timeouts de red).
 # ==========================================
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim
 
 WORKDIR /app
-
-# Instalar herramientas para compilar módulos nativos (better-sqlite3)
-RUN apk update && \
-    (apk add --no-cache python3 make g++ || \
-     (sleep 2 && apk add --no-cache python3 make g++) || \
-     (sleep 4 && apk add --no-cache python3 make g++))
-
-# Copiar manifiestos primero para cachear dependencias
-COPY package*.json ./
-
-# Instalar solo dependencias de producción
-RUN npm ci --omit=dev && npm cache clean --force
-
-# ==========================================
-# Etapa 2: Runner (Imagen final para Coolify)
-# ==========================================
-FROM node:22-alpine AS runner
-
-WORKDIR /app
-
-# Instalar dependencias de runtime:
-# - libstdc++: requerido por better-sqlite3
-# - tzdata: zonas horarias
-# - su-exec: cambio seguro de usuario
-RUN apk update && \
-    (apk add --no-cache libstdc++ tzdata su-exec || \
-     (sleep 2 && apk add --no-cache libstdc++ tzdata su-exec) || \
-     (sleep 4 && apk add --no-cache libstdc++ tzdata su-exec) || true)
 
 # Variables de entorno por defecto
 ENV NODE_ENV=production \
     PORT=3001 \
     DATABASE_PATH=/data/database.sqlite
 
-# Crear directorios para los volúmenes persistentes de Coolify
+# Crear directorios para los volúmenes persistentes de Coolify y dar permisos a 'node'
 RUN mkdir -p /data /app/public/updates /app/logs && \
     chown -R node:node /app /data
 
-# Copiar dependencias ya compiladas desde el builder
-COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+# Copiar manifiestos de dependencias primero para aprovechar caché
+COPY package*.json ./
+
+# Instalar dependencias de producción (en Debian glibc se descargan binarios precompilados directamente)
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copiar el código fuente
-COPY --chown=node:node package*.json ./
 COPY --chown=node:node server.js ./
 COPY --chown=node:node manage-users.js ./
 
@@ -58,7 +36,7 @@ RUN sed -i 's/\r$//' /docker-entrypoint.sh && \
 # Exponer el puerto de la aplicación
 EXPOSE 3001
 
-# Verificación de salud nativa con Node.js (sin depender de curl externo)
+# Verificación de salud nativa con Node.js (inmune a paquetes externos)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:3001/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
