@@ -5,5 +5,9 @@ set -e
 mkdir -p /data /app/public/updates /app/logs
 chown -R node:node /data /app/public/updates /app/logs 2>/dev/null || true
 
-# Ejecutar el comando pasado como parámetro bajo el usuario 'node'
-exec su-exec node "$@"
+# Si su-exec está instalado, ejecutar bajo usuario 'node'; si no, ejecutar directamente
+if command -v su-exec >/dev/null 2>&1; then
+    exec su-exec node "$@"
+else
+    exec "$@"
+fi

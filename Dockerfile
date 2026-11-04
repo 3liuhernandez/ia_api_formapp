@@ -6,7 +6,10 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Instalar herramientas para compilar módulos nativos (better-sqlite3)
-RUN for i in 1 2 3; do apk add --no-cache python3 make g++ && break || sleep 3; done
+RUN apk update && \
+    (apk add --no-cache python3 make g++ || \
+     (sleep 2 && apk add --no-cache python3 make g++) || \
+     (sleep 4 && apk add --no-cache python3 make g++))
 
 # Copiar manifiestos primero para cachear dependencias
 COPY package*.json ./
@@ -21,14 +24,16 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Instalar dependencias necesarias:
+# Instalar dependencias de runtime:
 # - libstdc++: requerido por better-sqlite3
-# - curl: para el healthcheck de Coolify / Docker
 # - tzdata: zonas horarias
-# - su-exec: para cambiar de root a node de forma segura tras ajustar permisos
-RUN for i in 1 2 3; do apk add --no-cache libstdc++ curl tzdata su-exec && break || sleep 3; done
+# - su-exec: cambio seguro de usuario
+RUN apk update && \
+    (apk add --no-cache libstdc++ tzdata su-exec || \
+     (sleep 2 && apk add --no-cache libstdc++ tzdata su-exec) || \
+     (sleep 4 && apk add --no-cache libstdc++ tzdata su-exec) || true)
 
-# Variables de entorno por defecto (Coolify puede sobrescribirlas desde su panel)
+# Variables de entorno por defecto
 ENV NODE_ENV=production \
     PORT=3001 \
     DATABASE_PATH=/data/database.sqlite
@@ -53,9 +58,9 @@ RUN sed -i 's/\r$//' /docker-entrypoint.sh && \
 # Exponer el puerto de la aplicación
 EXPOSE 3001
 
-# Verificación de estado de salud (Coolify Healthcheck)
+# Verificación de salud nativa con Node.js (sin depender de curl externo)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3001/api/health || exit 1
+  CMD node -e "fetch('http://localhost:3001/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
